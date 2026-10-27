@@ -22,6 +22,7 @@ main{max-width:640px;margin:0 auto;padding:16px}
 .q{font-size:1.25rem;font-weight:700;margin:0 0 6px}
 .passage{background:var(--ai-soft);border-radius:8px;padding:12px 14px;margin:0 0 14px;white-space:pre-line}
 .hint{color:var(--mute);font-size:.9rem;margin:0 0 14px}
+.pic{display:block;max-width:100%;height:auto;border-radius:8px;margin:0 0 14px}
 .opt{display:block;width:100%;text-align:left;font:inherit;color:inherit;background:var(--card);border:2px solid var(--line);border-radius:10px;padding:12px 14px;margin:0 0 10px;cursor:pointer}
 .opt:hover{border-color:var(--ai)}
 .opt.sel{border-color:var(--ai);background:var(--ai-soft)}
@@ -49,6 +50,7 @@ h1{font-size:1.6rem;margin:0 0 8px}
 <script>
 // ====== BANK SOAL: ubah/tambah di sini ======
 // type: "kosakata" | "percakapan" | "dengar" | "baca"
+// img (opsional): nama file gambar, misalnya img:"gambar/soal1.jpg"
 // a: indeks jawaban benar (mulai dari 0); say: teks yang dibacakan (untuk soal dengar)
 var DURATION_MIN = 60;
 var QUESTIONS = [
@@ -94,6 +96,7 @@ function renderQ(){
   h+='<div class="bar"><span class="sec">'+LABEL[q.type]+'</span><span id="t" class="timer'+(left<300?" low":"")+'">'+fmt(left)+'</span></div>';
   h+='<div class="card"><p class="hint">Soal '+(cur+1)+' dari '+QUESTIONS.length+'</p>';
   if(q.say)h+='<p><button class="btn ghost" id="play">Putar audio</button></p>';
+  if(q.img)h+='<img class="pic" src="'+q.img+'" alt="Gambar soal">';
   if(q.passage)h+='<p class="passage">'+esc(q.passage)+'</p>';
   h+='<p class="q" style="white-space:pre-line">'+esc(q.q)+'</p>';
   h+=q.o.map(function(o,i){return '<button class="opt'+(ans[cur]===i?' sel':'')+'" data-i="'+i+'">'+(i+1)+'. '+esc(o)+'</button>'}).join("");
@@ -121,6 +124,7 @@ function renderResult(){
   var q=QUESTIONS[cur],h='<div class="card"><h1>Hasil latihan</h1><p class="score">'+ok+' / '+n+'</p><p class="hint">Benar '+Math.round(ok/n*100)+'%. Ketuk nomor di bawah untuk melihat pembahasan.</p><button class="btn" id="again">Ulangi latihan</button></div>';
   h+=grid(true);
   h+='<div class="card rev"><p class="hint">Soal '+(cur+1)+' · '+LABEL[q.type]+'</p>';
+  if(q.img)h+='<img class="pic" src="'+q.img+'" alt="Gambar soal">';
   if(q.passage)h+='<p class="passage">'+esc(q.passage)+'</p>';
   h+='<p class="q" style="white-space:pre-line">'+esc(q.q)+'</p>';
   h+=q.o.map(function(o,i){var c="opt";if(i===q.a)c+=" ok";else if(i===ans[cur])c+=" ng";return '<div class="'+c+'">'+(i+1)+'. '+esc(o)+'</div>'}).join("");
@@ -133,3 +137,4 @@ home();
 </script>
 </body>
 </html>
+
