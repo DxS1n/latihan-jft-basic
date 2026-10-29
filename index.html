@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Latihan JFT Basic</title>
+<title>Portal Latihan JFT Basic</title>
 <link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;700&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#eef1f6;--card:#fff;--ink:#1c2340;--mute:#5d6685;--line:#d5dbe8;--ai:#243a8f;--ai-soft:#e3e8fa;--ok:#1d7a4a;--ok-soft:#dff3e7;--ng:#b3261e;--ng-soft:#fbe4e2;
@@ -28,11 +28,13 @@ main{max-width:640px;margin:0 auto;padding:16px}
 .opt.sel{border-color:var(--ai);background:var(--ai-soft)}
 .opt.ok{border-color:var(--ok);background:var(--ok-soft)}
 .opt.ng{border-color:var(--ng);background:var(--ng-soft)}
-button:focus-visible{outline:3px solid var(--ai);outline-offset:2px}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid var(--ai);outline-offset:2px}
 .btn{font:inherit;font-weight:700;border:0;border-radius:10px;padding:12px 20px;cursor:pointer;background:var(--ai);color:var(--bg)}
 .btn.ghost{background:transparent;color:var(--ai);border:2px solid var(--ai)}
+.btn.sm{padding:5px 12px;font-size:.85rem}
 .btn:disabled{opacity:.4;cursor:default}
 .nav{display:flex;justify-content:space-between;gap:10px;margin-top:14px}
+.stack{display:grid;gap:10px;margin-top:14px}
 .grid{display:flex;flex-wrap:wrap;gap:6px;margin-top:16px}
 .dot{width:38px;height:38px;border-radius:8px;border:2px solid var(--line);background:var(--card);color:var(--ink);font:inherit;cursor:pointer}
 .dot.done{background:var(--ai-soft);border-color:var(--ai)}
@@ -43,16 +45,30 @@ button:focus-visible{outline:3px solid var(--ai);outline-offset:2px}
 .exp{margin-top:12px;padding:12px 14px;border-left:4px solid var(--ai);background:var(--ai-soft);border-radius:0 8px 8px 0}
 h1{font-size:1.6rem;margin:0 0 8px}
 .rev{margin-top:16px}
+.lab{display:block;font-weight:700;margin:12px 0 4px}
+.inp{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:2px solid var(--line);border-radius:10px;padding:12px 14px}
+textarea.inp{font-family:ui-monospace,Menlo,monospace;font-size:.8rem;height:300px}
+.msg{min-height:1.5em;margin:10px 0 0;color:var(--ng);font-size:.95rem}
+.msg.info{color:var(--ok)}
+.tw{overflow-x:auto;margin:14px 0}
+table{border-collapse:collapse;width:100%;font-size:.95rem}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+td.cd{font-weight:700;letter-spacing:.08em;user-select:all}
+code{background:var(--ai-soft);padding:1px 6px;border-radius:4px}
 </style>
 </head>
 <body>
 <main id="app"></main>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-// ====== BANK SOAL: ubah/tambah di sini ======
-// type: "kosakata" | "percakapan" | "dengar" | "baca"
-// img (opsional): nama file gambar, misalnya img:"gambar/soal1.jpg"
-// a: indeks jawaban benar (mulai dari 0); say: teks yang dibacakan (untuk soal dengar)
+// ====== PENGATURAN: isi dari Firebase (Project settings > Your apps > Web) ======
+var FIREBASE_CONFIG = {apiKey:"AIzaSyAeg7_J99cP8TcosS-6QzH79j9uFxNGs3s", authDomain:"jft-test-f8e88.firebaseapp.com", projectId:"jft-test-f8e88", appId:"1:450052692620:web:79663d25f60e386c8079a9"};
+var ADMIN_NAME = "admin"; // harus sama dengan email admin di Rules (admin@jft.app)
 var DURATION_MIN = 60;
+
+// Soal contoh. Soal asli disimpan admin di database lewat menu Bank soal.
 var QUESTIONS = [
  {type:"kosakata", q:"「学校」の読み方は どれですか。", o:["がっこう","がくこう","かっこう","がこう"], a:0, e:"学校 dibaca がっこう (sekolah). Perhatikan bunyi っ kecil."},
  {type:"kosakata", q:"「毎朝」の読み方は どれですか。", o:["まいちょう","まいあさ","まいにち","まいよる"], a:1, e:"毎朝 = まいあさ (setiap pagi). 毎日 = まいにち (setiap hari)."},
@@ -66,20 +82,183 @@ var QUESTIONS = [
 // ============================================
 var LABEL={kosakata:"Tulisan dan kosakata",percakapan:"Percakapan dan ekspresi",dengar:"Mendengarkan",baca:"Membaca"};
 var app=document.getElementById("app");
-var ans=[],cur=0,left=DURATION_MIN*60,tick=null,finished=false;
+var ans=[],cur=0,left=0,tick=null,finished=false,savedMsg="",auth,db,user=null;
 
+function $(id){return document.getElementById(id)}
 function esc(s){return String(s).replace(/[&<>]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;"}[c]})}
 function fmt(s){var m=Math.floor(s/60),r=s%60;return (m<10?"0":"")+m+":"+(r<10?"0":"")+r}
-
-function start(){
-  ans=QUESTIONS.map(function(){return -1});cur=0;left=DURATION_MIN*60;finished=false;
-  clearInterval(tick);
-  tick=setInterval(function(){left--;var t=document.getElementById("t");if(t){t.textContent=fmt(left);t.className="timer"+(left<300?" low":"")}if(left<=0)finish()},1000);
-  renderQ();
+function ts(){return firebase.firestore.FieldValue.serverTimestamp()}
+function ms(d,k){var t=d[k||"at"];return t&&t.toMillis?t.toMillis():Date.now()}
+function dt(n){return new Date(n).toLocaleString("id-ID",{dateStyle:"short",timeStyle:"short"})}
+function toEmail(n){n=String(n).trim().toLowerCase().replace(/\s+/g,"_");return /^[a-z0-9_]{2,30}$/.test(n)?n+"@jft.app":null}
+function myName(){return user.displayName||user.email.split("@")[0]}
+function isAdmin(){return !!user&&user.email===toEmail(ADMIN_NAME)}
+function box(html){app.innerHTML='<div class="card">'+html+'</div>'}
+function setMsg(t,info){var m=$("msg");if(m){m.textContent=t;m.className="msg"+(info?" info":"")}}
+function errMsg(e){
+  var c=(e&&e.code)||"";
+  if(/user-not-found|wrong-password|invalid-credential/.test(c))return "Nama atau password salah.";
+  if(c==="auth/email-already-in-use")return "Nama itu sudah dipakai. Coba nama lain.";
+  if(c==="auth/weak-password")return "Password minimal 6 karakter.";
+  if(c==="auth/operation-not-allowed")return "Login Email/Password belum diaktifkan di Firebase.";
+  if(c==="auth/network-request-failed")return "Tidak ada koneksi internet.";
+  if(c==="auth/too-many-requests")return "Terlalu banyak percobaan. Coba lagi nanti.";
+  if(c==="permission-denied")return "Tidak diizinkan. Periksa Rules di Firebase.";
+  return "Terjadi kesalahan: "+(c||(e&&e.message)||"tidak diketahui");
 }
-function home(){
-  app.innerHTML='<div class="card"><h1>Latihan JFT Basic</h1><p>'+QUESTIONS.length+' soal contoh, waktu '+DURATION_MIN+' menit. Mencakup 4 bagian: tulisan dan kosakata, percakapan dan ekspresi, mendengarkan, membaca.</p><p class="hint">Soal mendengarkan memakai suara bawaan perangkat. Pastikan volume menyala.</p><button class="btn" id="go">Mulai latihan</button></div>';
-  document.getElementById("go").onclick=start;
+function checkBank(a){
+  if(!Array.isArray(a)||!a.length)return "Harus berupa daftar soal, diawali [ dan diakhiri ].";
+  for(var i=0;i<a.length;i++){var q=a[i],n="Soal "+(i+1)+": ";
+    if(!q||!LABEL[q.type])return n+"type harus kosakata, percakapan, dengar, atau baca.";
+    if(!q.q)return n+"q (pertanyaan) kosong.";
+    if(!Array.isArray(q.o)||q.o.length<2)return n+"o (pilihan) minimal 2.";
+    if(!(q.a>=0&&q.a<q.o.length))return n+"a (jawaban benar) di luar pilihan.";
+  }
+  return "";
+}
+
+// ---------- Masuk / daftar ----------
+function login(){
+  box('<h1>Portal Latihan JFT Basic</h1><p class="hint">Masuk atau daftar akun baru. Setelah daftar, Anda perlu kode akses dari admin.</p>'
+  +'<label class="lab" for="nm">Nama</label><input class="inp" id="nm" autocomplete="username" autocapitalize="off" placeholder="mis. Wayan Putra">'
+  +'<label class="lab" for="pw">Password</label><input class="inp" id="pw" type="password" autocomplete="current-password" placeholder="minimal 6 karakter">'
+  +'<p class="msg" id="msg" role="alert"></p><div class="nav"><button class="btn ghost" id="reg">Daftar</button><button class="btn" id="in">Masuk</button></div>');
+  function go(isReg){
+    var nm=$("nm").value.trim(),pw=$("pw").value,em=toEmail(nm);
+    if(!em){setMsg("Nama 2-30 karakter, hanya huruf, angka, dan spasi.");return}
+    if(!pw){setMsg("Isi password.");return}
+    setMsg("Memproses...",1);
+    var p=isReg
+      ?auth.createUserWithEmailAndPassword(em,pw).then(function(c){return c.user.updateProfile({displayName:nm}).then(function(){user=auth.currentUser;gate()})})
+      :auth.signInWithEmailAndPassword(em,pw);
+    p.catch(function(e){setMsg(errMsg(e))});
+  }
+  $("in").onclick=function(){go(false)};
+  $("reg").onclick=function(){go(true)};
+}
+function logoutBtn(){var b=$("out");if(b)b.onclick=function(){auth.signOut()}}
+
+// ---------- Gerbang kode akses ----------
+function loadBank(){
+  return db.collection("config").doc("bank").get().then(function(s){
+    if(s.exists){var d=s.data(),a=JSON.parse(d.json);if(!checkBank(a)){QUESTIONS=a;DURATION_MIN=d.duration||60}}
+  }).catch(function(){});
+}
+function gate(){
+  box('<p class="hint">Memuat...</p>');
+  if(isAdmin()){loadBank().then(menu);return}
+  db.collection("users").doc(user.uid).get().then(function(s){
+    if(s.exists&&s.data().active)loadBank().then(menu);
+    else redeem(s.exists);
+  }).catch(function(e){box('<h1>Gagal memuat</h1><p>'+esc(errMsg(e))+'</p><button class="btn" id="out">Keluar</button>');logoutBtn()});
+}
+function redeem(blocked){
+  if(blocked){box('<h1>Akses dinonaktifkan</h1><p>Akun Anda tidak aktif. Hubungi admin.</p><button class="btn" id="out">Keluar</button>');logoutBtn();return}
+  box('<p class="hint">Halo, '+esc(myName())+'</p><h1>Masukkan kode akses</h1><p>Minta kode kepada admin. Kode hanya dimasukkan sekali.</p>'
+  +'<label class="lab" for="cd">Kode akses</label><input class="inp" id="cd" autocapitalize="characters" autocomplete="off" placeholder="mis. K7M2XQ9A">'
+  +'<p class="msg" id="msg" role="alert"></p><div class="nav"><button class="btn ghost" id="out">Keluar</button><button class="btn" id="ok">Aktifkan</button></div>');
+  logoutBtn();
+  $("ok").onclick=function(){
+    var c=$("cd").value.toUpperCase().replace(/[^A-Z0-9]/g,"");
+    if(c.length<6){setMsg("Kode terlalu pendek.");return}
+    setMsg("Memeriksa kode...",1);
+    var b=db.batch();
+    b.update(db.collection("codes").doc(c),{usedBy:user.uid,usedName:myName(),usedAt:ts()});
+    b.set(db.collection("users").doc(user.uid),{name:myName(),active:true,code:c,at:ts()});
+    b.commit().then(gate).catch(function(e){setMsg(e.code==="permission-denied"||e.code==="not-found"?"Kode tidak valid atau sudah dipakai.":errMsg(e))});
+  };
+}
+
+// ---------- Menu ----------
+function menu(){
+  clearInterval(tick);
+  box('<p class="hint">Halo,</p><h1>'+esc(myName())+(isAdmin()?' (admin)':'')+'</h1><p>'+QUESTIONS.length+' soal, waktu '+DURATION_MIN+' menit. Mencakup tulisan dan kosakata, percakapan dan ekspresi, mendengarkan, dan membaca.</p><p class="hint">Soal mendengarkan memakai suara bawaan perangkat. Pastikan volume menyala.</p>'
+  +'<div class="stack"><button class="btn" id="go">Mulai latihan</button><button class="btn ghost" id="his">Riwayat nilai saya</button>'
+  +(isAdmin()?'<button class="btn ghost" id="cds">Kode akses</button><button class="btn ghost" id="ppl">Peserta</button><button class="btn ghost" id="adm">Nilai semua peserta</button><button class="btn ghost" id="bnk">Bank soal</button>':'')
+  +'<button class="btn ghost" id="out">Keluar</button></div>');
+  $("go").onclick=start;
+  $("his").onclick=function(){scores(false)};
+  if(isAdmin()){$("cds").onclick=codes;$("ppl").onclick=people;$("adm").onclick=function(){scores(true)};$("bnk").onclick=bank}
+  logoutBtn();
+}
+function sub(title,inner){box('<h1>'+title+'</h1>'+inner+'<button class="btn ghost" id="bk">Kembali</button>');$("bk").onclick=menu}
+function table(head,rows){return '<div class="tw"><table><tr>'+head.map(function(h){return '<th>'+h+'</th>'}).join("")+'</tr>'+rows.join("")+'</table></div>'}
+
+function scores(all){
+  sub(all?'Nilai semua peserta':'Riwayat nilai saya','<div id="rows" class="hint">Memuat...</div>');
+  var qy=all?db.collection("results").limit(500):db.collection("results").where("uid","==",user.uid).limit(200);
+  qy.get().then(function(s){
+    var r=s.docs.map(function(d){return d.data()}).sort(function(a,b){return ms(b)-ms(a)});
+    if(!r.length){$("rows").textContent="Belum ada nilai.";return}
+    $("rows").className="";
+    $("rows").innerHTML=table((all?['Nama']:[]).concat(['Nilai','%','Tanggal']),r.map(function(d){return '<tr>'+(all?'<td>'+esc(d.name)+'</td>':'')+'<td>'+d.score+'/'+d.total+'</td><td>'+d.pct+'</td><td>'+dt(ms(d))+'</td></tr>'}));
+  }).catch(function(e){$("rows").textContent=errMsg(e)});
+}
+
+// ---------- Admin: kode akses ----------
+function genCode(){
+  var A="ABCDEFGHJKMNPQRSTUVWXYZ23456789",r=crypto.getRandomValues(new Uint8Array(8)),s="";
+  for(var i=0;i<8;i++)s+=A[r[i]%A.length];
+  return s;
+}
+function codes(){
+  sub('Kode akses','<p class="hint">Satu kode untuk satu peserta. Ketuk kode untuk memilihnya, lalu salin dan kirim lewat WhatsApp.</p>'
+  +'<label class="lab" for="cn">Jumlah kode</label><input class="inp" id="cn" type="number" min="1" max="20" value="1">'
+  +'<label class="lab" for="cl">Catatan (opsional)</label><input class="inp" id="cl" placeholder="mis. Kelas A">'
+  +'<p class="msg" id="msg" role="alert"></p><button class="btn" id="mk">Buat kode</button><div id="rows" class="hint" style="margin-top:16px">Memuat...</div>');
+  function list(){
+    db.collection("codes").get().then(function(s){
+      var r=s.docs.map(function(d){var x=d.data();x.id=d.id;return x}).sort(function(a,b){return ms(b,"createdAt")-ms(a,"createdAt")});
+      if(!r.length){$("rows").textContent="Belum ada kode.";return}
+      $("rows").className="";
+      $("rows").innerHTML=table(['Kode','Catatan','Status'],r.map(function(x){return '<tr><td class="cd">'+x.id+'</td><td>'+esc(x.label||"")+'</td><td>'+(x.usedBy?'Dipakai '+esc(x.usedName||""):'Belum dipakai')+'</td></tr>'}));
+    }).catch(function(e){$("rows").textContent=errMsg(e)});
+  }
+  $("mk").onclick=function(){
+    var n=Math.min(20,Math.max(1,parseInt($("cn").value)||1)),b=db.batch(),l=$("cl").value.trim();
+    for(var i=0;i<n;i++)b.set(db.collection("codes").doc(genCode()),{label:l,usedBy:null,createdAt:ts()});
+    b.commit().then(function(){setMsg(n+" kode dibuat.",1);list()}).catch(function(e){setMsg(errMsg(e))});
+  };
+  list();
+}
+
+// ---------- Admin: peserta ----------
+function people(){
+  sub('Peserta','<div id="rows" class="hint">Memuat...</div><p class="msg" id="msg" role="alert"></p>');
+  db.collection("users").get().then(function(s){
+    var r=s.docs.map(function(d){var x=d.data();x.id=d.id;return x}).sort(function(a,b){return String(a.name).localeCompare(String(b.name))});
+    if(!r.length){$("rows").textContent="Belum ada peserta aktif.";return}
+    $("rows").className="";
+    $("rows").innerHTML=table(['Nama','Status',''],r.map(function(x){return '<tr><td>'+esc(x.name)+'</td><td>'+(x.active?'Aktif':'Nonaktif')+'</td><td><button class="btn ghost sm" data-id="'+x.id+'" data-on="'+(x.active?1:0)+'">'+(x.active?'Nonaktifkan':'Aktifkan')+'</button></td></tr>'}));
+    [].forEach.call(document.querySelectorAll("[data-id]"),function(b){b.onclick=function(){
+      db.collection("users").doc(b.dataset.id).update({active:b.dataset.on!=="1"}).then(people).catch(function(e){setMsg(errMsg(e))});
+    }});
+  }).catch(function(e){$("rows").textContent=errMsg(e)});
+}
+
+// ---------- Admin: bank soal ----------
+function bank(){
+  sub('Bank soal','<p class="hint">Soal disimpan di database dan hanya terbaca oleh peserta aktif. Format JSON berisi: type, q, o (pilihan), a (nomor jawaban benar, mulai dari 0), e (pembahasan). Opsional: passage, say, img.</p>'
+  +'<label class="lab" for="du">Durasi (menit)</label><input class="inp" id="du" type="number" min="1" value="'+DURATION_MIN+'">'
+  +'<label class="lab" for="js">Daftar soal (JSON)</label><textarea class="inp" id="js" spellcheck="false" autocapitalize="off"></textarea>'
+  +'<p class="msg" id="msg" role="alert"></p><button class="btn" id="sv">Simpan ke database</button>');
+  $("js").value=JSON.stringify(QUESTIONS,null,1);
+  $("sv").onclick=function(){
+    var a;try{a=JSON.parse($("js").value)}catch(e){setMsg("Format JSON salah: "+e.message);return}
+    var er=checkBank(a);if(er){setMsg(er);return}
+    var d=Math.max(1,parseInt($("du").value)||60);
+    setMsg("Menyimpan...",1);
+    db.collection("config").doc("bank").set({json:JSON.stringify(a),duration:d,at:ts()})
+      .then(function(){QUESTIONS=a;DURATION_MIN=d;setMsg("Tersimpan. "+a.length+" soal.",1)}).catch(function(e){setMsg(errMsg(e))});
+  };
+}
+
+// ---------- Latihan ----------
+function start(){
+  ans=QUESTIONS.map(function(){return -1});cur=0;left=DURATION_MIN*60;finished=false;savedMsg="Menyimpan nilai...";
+  clearInterval(tick);
+  tick=setInterval(function(){left--;var t=$("t");if(t){t.textContent=fmt(left);t.className="timer"+(left<300?" low":"")}if(left<=0)finish()},1000);
+  renderQ();
 }
 function grid(review){
   return '<div class="grid">'+QUESTIONS.map(function(q,i){
@@ -90,13 +269,12 @@ function grid(review){
   }).join("")+'</div>';
 }
 function bindGrid(fn){[].forEach.call(document.querySelectorAll(".dot"),function(b){b.onclick=function(){cur=+b.dataset.i;fn()}})}
-
 function renderQ(){
   var q=QUESTIONS[cur],h='';
   h+='<div class="bar"><span class="sec">'+LABEL[q.type]+'</span><span id="t" class="timer'+(left<300?" low":"")+'">'+fmt(left)+'</span></div>';
   h+='<div class="card"><p class="hint">Soal '+(cur+1)+' dari '+QUESTIONS.length+'</p>';
   if(q.say)h+='<p><button class="btn ghost" id="play">Putar audio</button></p>';
-  if(q.img)h+='<img class="pic" src="'+q.img+'" alt="Gambar soal">';
+  if(q.img)h+='<img class="pic" src="'+esc(q.img)+'" alt="Gambar soal">';
   if(q.passage)h+='<p class="passage">'+esc(q.passage)+'</p>';
   h+='<p class="q" style="white-space:pre-line">'+esc(q.q)+'</p>';
   h+=q.o.map(function(o,i){return '<button class="opt'+(ans[cur]===i?' sel':'')+'" data-i="'+i+'">'+(i+1)+'. '+esc(o)+'</button>'}).join("");
@@ -105,36 +283,49 @@ function renderQ(){
   h+='</div></div>'+grid(false);
   app.innerHTML=h;
   [].forEach.call(document.querySelectorAll(".opt"),function(b){b.onclick=function(){ans[cur]=+b.dataset.i;renderQ()}});
-  document.getElementById("prev").onclick=function(){cur--;renderQ()};
-  var n=document.getElementById("next");if(n)n.onclick=function(){cur++;renderQ()};
-  var e=document.getElementById("end");if(e)e.onclick=function(){
+  $("prev").onclick=function(){cur--;renderQ()};
+  var n=$("next");if(n)n.onclick=function(){cur++;renderQ()};
+  var e=$("end");if(e)e.onclick=function(){
     var un=ans.filter(function(x){return x<0}).length;
     if(un&&!confirm(un+" soal belum dijawab. Tetap selesaikan?"))return;finish()};
-  var p=document.getElementById("play");
+  var p=$("play");
   if(p)p.onclick=function(){
     if(!("speechSynthesis" in window)){alert("Perangkat ini tidak mendukung suara bawaan.");return}
     speechSynthesis.cancel();var u=new SpeechSynthesisUtterance(q.say);u.lang="ja-JP";u.rate=.85;speechSynthesis.speak(u)};
   bindGrid(renderQ);
 }
+function calc(){return QUESTIONS.filter(function(q,i){return ans[i]===q.a}).length}
+function setSaved(t){savedMsg=t;var s=$("saved");if(s)s.textContent=t}
 function finish(){
   if(finished)return;finished=true;clearInterval(tick);if(window.speechSynthesis)speechSynthesis.cancel();cur=0;renderResult();
+  var ok=calc(),n=QUESTIONS.length;
+  db.collection("results").add({uid:user.uid,name:myName(),score:ok,total:n,pct:Math.round(ok/n*100),at:ts()})
+    .then(function(){setSaved("Nilai tersimpan.")})
+    .catch(function(e){setSaved("Nilai gagal disimpan: "+errMsg(e))});
 }
 function renderResult(){
-  var ok=QUESTIONS.filter(function(q,i){return ans[i]===q.a}).length,n=QUESTIONS.length;
-  var q=QUESTIONS[cur],h='<div class="card"><h1>Hasil latihan</h1><p class="score">'+ok+' / '+n+'</p><p class="hint">Benar '+Math.round(ok/n*100)+'%. Ketuk nomor di bawah untuk melihat pembahasan.</p><button class="btn" id="again">Ulangi latihan</button></div>';
+  var ok=calc(),n=QUESTIONS.length;
+  var q=QUESTIONS[cur],h='<div class="card"><h1>Hasil latihan</h1><p class="score">'+ok+' / '+n+'</p><p class="hint">Benar '+Math.round(ok/n*100)+'%. <span id="saved">'+esc(savedMsg)+'</span> Ketuk nomor di bawah untuk melihat pembahasan.</p><button class="btn" id="again">Kembali ke menu</button></div>';
   h+=grid(true);
   h+='<div class="card rev"><p class="hint">Soal '+(cur+1)+' · '+LABEL[q.type]+'</p>';
-  if(q.img)h+='<img class="pic" src="'+q.img+'" alt="Gambar soal">';
+  if(q.img)h+='<img class="pic" src="'+esc(q.img)+'" alt="Gambar soal">';
   if(q.passage)h+='<p class="passage">'+esc(q.passage)+'</p>';
   h+='<p class="q" style="white-space:pre-line">'+esc(q.q)+'</p>';
   h+=q.o.map(function(o,i){var c="opt";if(i===q.a)c+=" ok";else if(i===ans[cur])c+=" ng";return '<div class="'+c+'">'+(i+1)+'. '+esc(o)+'</div>'}).join("");
-  h+='<div class="exp"><strong>'+(ans[cur]===q.a?'Benar.':ans[cur]<0?'Tidak dijawab.':'Salah.')+'</strong> '+esc(q.e)+'</div></div>';
+  h+='<div class="exp"><strong>'+(ans[cur]===q.a?'Benar.':ans[cur]<0?'Tidak dijawab.':'Salah.')+'</strong> '+esc(q.e||"")+'</div></div>';
   app.innerHTML=h;
-  document.getElementById("again").onclick=home;
+  $("again").onclick=menu;
   bindGrid(renderResult);
 }
-home();
+
+// ---------- Mulai ----------
+if(!FIREBASE_CONFIG.apiKey||typeof firebase==="undefined"){
+  box('<h1>Firebase belum diisi</h1><p>Isi <code>FIREBASE_CONFIG</code> di bagian atas kode dengan data dari project Firebase Anda, lalu muat ulang halaman ini.</p>');
+}else{
+  firebase.initializeApp(FIREBASE_CONFIG);
+  auth=firebase.auth();db=firebase.firestore();
+  auth.onAuthStateChanged(function(u){user=u;clearInterval(tick);if(u)gate();else login()});
+}
 </script>
 </body>
 </html>
-
